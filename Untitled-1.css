@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-Parking - Улаанбаатарын зогсоолын систем</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        /* ══════════ MODAL OVERLAY ══════════ */
+        .overlay {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.55);
+            backdrop-filter: blur(6px);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+        .overlay.show { display: flex; animation: fadeIn .2s ease; }
+
+        .modal {
+            background: #fff;
+            border-radius: 20px;
+            padding: 44px 40px;
+            width: 420px;
+            max-width: 95vw;
+            position: relative;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+            animation: slideUp .3s cubic-bezier(.16,1,.3,1);
+        }
+
+        .modal-close {
+            position: absolute; top: 16px; right: 16px;
+            background: #f1f3f5; border: none;
+            width: 34px; height: 34px; border-radius: 50%;
+            cursor: pointer; font-size: 16px;
+            display: flex; align-items: center; justify-content: center;
+            color: #666; transition: background .2s;
+        }
+        .modal-close:hover { background: #e2e6ea; }
+
+        .modal-icon { font-size: 40px; margin-bottom: 12px; }
+
+        .modal h2 {
+            font-size: 26px; font-weight: 700;
+            color: #333; margin-bottom: 6px;
+        }
+        .modal p.sub { color: #888; font-size: 14px; margin-bottom: 28px; }
+
+        .form-group { margin-bottom: 16px; }
+        .form-group label {
+            display: block; font-size: 13px; font-weight: 600;
+            color: #555; margin-bottom: 7px;
+        }
+        .form-group input {
+            width: 100%;
+            border: 1.5px solid #e2e6ea;
+            border-radius: 10px;
+            padding: 12px 16px;
+            font-size: 15px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color .2s;
+            color: #333;
+        }
+        .form-group input:focus { border-color: #667eea; }
+        .form-group input::placeholder { color: #bbb; }
+
+        .btn-modal {
+            width: 100%; margin-top: 6px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: #fff; border: none;
+            padding: 14px; border-radius: 10px;
+            font-size: 15px; font-weight: 600;
+            cursor: pointer; font-family: inherit;
+            transition: opacity .2s, transform .2s;
+        }
+        .btn-modal:hover { opacity: .9; transform: translateY(-1px); }
+
+        .modal-divider {
+            display: flex; align-items: center; gap: 12px;
+            margin: 20px 0; color: #ccc; font-size: 13px;
+        }
+        .modal-divider::before, .modal-divider::after {
+            content: ''; flex: 1; height: 1px; background: #e9ecef;
+        }
+
+        .modal-switch {
+            text-align: center; font-size: 14px; color: #888; margin-top: 18px;
+        }
+        .modal-switch a { color: #667eea; cursor: pointer; font-weight: 600; text-decoration: none; }
+        .modal-switch a:hover { text-decoration: underline; }
+
+        .error-msg {
+            background: #fff5f5; border: 1px solid #ffcccc;
+            color: #c0392b; border-radius: 8px;
+            padding: 10px 14px; font-size: 13px;
+            margin-bottom: 14px; display: none;
+        }
+        .error-msg.show { display: block; }
+
+        .success-msg {
+            background: #f0fff4; border: 1px solid #c3e6cb;
+            color: #27ae60; border-radius: 8px;
+            padding: 10px 14px; font-size: 13px;
+            margin-bottom: 14px; display: none;
+        }
+        .success-msg.show { display: block; }
+
+        /* ══════════ HEADER ══════════ */
+        .header {
+            background: #ffffff;
+            padding: 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: sticky; top: 0; z-index: 1000;
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+
+        .header-content {
+            display: flex; justify-content: space-between;
+            align-items: center; flex-wrap: wrap; gap: 16px;
+            padding: 14px 0;
+        }
+
+        .logo { display: flex; align-items: center; gap: 10px; }
+        .logo h1 { color: #667eea; font-size: 26px; }
+        .logo-icon { font-size: 32px; }
+
+        nav { display: flex; gap: 28px; }
+        nav a { color: #333; text-decoration: none; font-weight: 500; transition: color .3s; cursor: pointer; }
+        nav a:hover { color: #667eea; }
+
+        /* Auth buttons in header */
+        .header-auth { display: flex; align-items: center; gap: 10px; }
+
+        .btn-login {
+            background: transparent; border: 2px solid #667eea;
+            color: #667eea; padding: 8px 20px; border-radius: 8px;
+            cursor: pointer; font-size: 14px; font-weight: 600;
+            font-family: inherit; transition: all .2s;
+        }
+        .btn-login:hover { background: #667eea; color: #fff; }
+
+        .btn-register {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border: none; color: #fff;
+            padding: 8px 20px; border-radius: 8px;
+            cursor: pointer; font-size: 14px; font-weight: 600;
+            font-family: inherit; transition: opacity .2s;
+        }
+        .btn-register:hover { opacity: .88; }
+
+        /* User info pill */
+        .user-pill {
+            display: none; align-items: center; gap: 10px;
+            background: #f8f9fa; border: 1.5px solid #e9ecef;
+            padding: 7px 16px 7px 10px; border-radius: 50px;
+        }
+        .user-pill.show { display: flex; }
+        .user-avatar {
+            width: 32px; height: 32px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 50%; color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: 700;
+        }
+        .user-name { font-size: 14px; font-weight: 600; color: #333; }
+        .btn-logout {
+            background: none; border: none; color: #999;
+            font-size: 13px; cursor: pointer; font-family: inherit;
+            transition: color .2s;
+        }
+        .btn-logout:hover { color: #dc3545; }
+
+        /* ══════════ HERO ══════════ */
+        .hero { text-align: center; padding: 60px 20px; color: white; }
+        .hero h2 { font-size: 48px; margin-bottom: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,.2); }
+        .hero p { font-size: 20px; margin-bottom: 30px; opacity: .95; }
+
+        .search-box {
+            max-width: 600px; margin: 0 auto;
+            display: flex; gap: 10px;
+            background: white; padding: 10px;
+            border-radius: 50px; box-shadow: 0 4px 20px rgba(0,0,0,.2);
+        }
+        .search-box input {
+            flex: 1; border: none; padding: 15px 25px;
+            font-size: 16px; outline: none; border-radius: 50px;
+        }
+        .search-box button {
+            background: #2563EB; color: white; border: none;
+            padding: 15px 35px; border-radius: 50px; cursor: pointer;
+            font-size: 16px; font-weight: 600; transition: background .3s;
+        }
+        .search-box button:hover { background: #1d4ed8; }
+
+        /* ══════════ MAIN ══════════ */
+        .main-content {
+            background: white; margin: 40px auto;
+            border-radius: 20px; overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,.2);
+        }
+
+        .tabs {
+            display: flex;
+            background: #2563EB;
+            border-bottom: 2px solid #e9ecef;
+        }
+        .tab {
+            flex: 1; padding: 20px; text-align: center;
+            cursor: pointer; font-weight: 600;
+            color: rgba(255,255,255,.7); transition: all .3s;
+            border-bottom: 3px solid transparent;
+        }
+        .tab:hover { background: rgba(255,255,255,.1); color: #fff; }
+        .tab.active { color: #667eea; border-bottom-color: #667eea; background: white; }
+
+        .tab-content { display: none; padding: 40px; }
+        .tab-content.active { display: block; }
+
+        #map { width: 100%; height: 500px; border-radius: 10px; margin-top: 20px; }
+
+        .parking-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px; margin-top: 20px;
+        }
+
+        .parking-card {
+            background: #F8FAFC; padding: 25px;
+            border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,.05);
+            transition: transform .3s, box-shadow .3s;
+        }
+        .parking-card:hover { transform: translateY(-5px); box-shadow: 0 5px 20px rgba(0,0,0,.1); }
+        .parking-card h3 { color: #667eea; margin-bottom: 15px; font-size: 20px; }
+
+        .parking-info { display: flex; flex-direction: column; gap: 10px; color: #6c757d; }
+        .parking-info div { display: flex; align-items: center; gap: 10px; }
+
+        .status { display: inline-block; padding: 5px 15px; border-radius: 20px; font-size: 14px; font-weight: 600; }
+        .status.available { background: #d4edda; color: #155724; }
+        .status.limited { background: #fff3cd; color: #856404; }
+        .status.full { background: #f8d7da; color: #721c24; }
+
+        .price-tag {
+            background: #667eea; color: white;
+            padding: 8px 15px; border-radius: 20px;
+            display: inline-block; font-weight: 600;
+        }
+
+        .features {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 30px; margin-top: 30px;
+        }
+        .feature { text-align: center; padding: 30px; }
+        .feature-icon { font-size: 48px; margin-bottom: 15px; }
+        .feature h3 { color: #333; margin-bottom: 10px; }
+        .feature p { color: #6c757d; line-height: 1.6; }
+
+        .footer {
+            background: rgba(255,255,255,.95); padding: 40px 0;
+            margin-top: 60px; text-align: center; color: #6c757d;
+        }
+
+        /* ══════════ ANIMATIONS ══════════ */
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+
+        @media (max-width: 768px) {
+            .hero h2 { font-size: 32px; }
+            .search-box { flex-direction: column; }
+            .search-box button { width: 100%; }
+            nav { width: 100%; justify-content: center; }
+            .tabs { flex-wrap: wrap; }
+            .header-auth { gap: 8px; }
+            .btn-login, .btn-register { padding: 7px 14px; font-size: 13px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ══════════ LOGIN MODAL ══════════ -->
+<div class="overlay" id="loginOverlay">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('login')">✕</button>
+        <div class="modal-icon">🔐</div>
+        <h2>Нэвтрэх</h2>
+        <p class="sub">Бүртгэлтэй хэрэглэгч нэвтэрнэ үү</p>
+        <div class="error-msg" id="loginError"></div>
+        <div class="success-msg" id="loginSuccess"></div>
+        <div class="form-group">
+            <label>Имэйл хаяг</label>
+            <input type="email" id="loginEmail" placeholder="example@email.com">
+        </div>
+        <div class="form-group">
+            <label>Нууц үг</label>
+            <input type="password" id="loginPassword" placeholder="Нууц үгээ оруулна уу">
+        </div>
+        <button class="btn-modal" onclick="handleLogin()">🚀 Нэвтрэх</button>
+        <div class="modal-divider">эсвэл</div>
+        <p class="modal-switch">Бүртгэлгүй юу? <a onclick="switchModal('login','register')">Энд бүртгүүлнэ үү →</a></p>
+    </div>
+</div>
+
+<!-- ══════════ REGISTER MODAL ══════════ -->
+<div class="overlay" id="registerOverlay">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('register')">✕</button>
+        <div class="modal-icon">✨</div>
+        <h2>Бүртгүүлэх</h2>
+        <p class="sub">Шинэ бүртгэл үүсгэж эхэлцгээе</p>
+        <div class="error-msg" id="registerError"></div>
+        <div class="success-msg" id="registerSuccess"></div>
+        <div class="form-group">
+            <label>Бүтэн нэр</label>
+            <input type="text" id="regName" placeholder="Таны нэр">
+        </div>
+        <div class="form-group">
+            <label>Утасны дугаар</label>
+            <input type="tel" id="regPhone" placeholder="9999-9999">
+        </div>
+        <div class="form-group">
+            <label>Имэйл хаяг</label>
+            <input type="email" id="regEmail" placeholder="example@email.com">
+        </div>
+        <div class="form-group">
+            <label>Нууц үг <span style="color:#999;font-weight:400;">(хамгийн багадаа 6 тэмдэгт)</span></label>
+            <input type="password" id="regPassword" placeholder="••••••••">
+        </div>
+        <div class="form-group">
+            <label>Нууц үг давтах</label>
+            <input type="password" id="regPassword2" placeholder="••••••••">
+        </div>
+        <button class="btn-modal" onclick="handleRegister()">✅ Бүртгүүлэх</button>
+        <div class="modal-divider">эсвэл</div>
+        <p class="modal-switch">Бүртгэлтэй юу? <a onclick="switchModal('register','login')">← Нэвтрэх</a></p>
+    </div>
+</div>
+
+<!-- ══════════ HEADER ══════════ -->
+<header class="header">
+    <div class="container">
+        <div class="header-content">
+            <div class="logo">
+                <span class="logo-icon"></span>
+                <h1>E-Parking</h1>
+            </div>
+            <nav>
+                <a href="#home">Нүүр</a>
+                <a onclick="showTab2('map')">Газрын зураг</a>
+                <a onclick="showTab2('list')">Зогсоолууд</a>
+                <a href="#about">Бидний тухай</a>
+            </nav>
+            <div class="header-auth">
+                <!-- Guest buttons -->
+                <button class="btn-login" id="loginBtn" onclick="openModal('login')">Нэвтрэх</button>
+                <button class="btn-register" id="registerBtn" onclick="openModal('register')">Бүртгүүлэх</button>
+                <!-- Logged-in pill -->
+                <div class="user-pill" id="userPill">
+                    <div class="user-avatar" id="userAvatar">Х</div>
+                    <span class="user-name" id="userName">Хэрэглэгч</span>
+                    <button class="btn-logout" onclick="handleLogout()">Гарах ✕</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- ══════════ HERO ══════════ -->
+<section class="hero">
+    <div class="container">
+        <h2>Зогсоол хайх хялбар боллоо</h2>
+        <p>Улаанбаатар хотын бүх зогсоолын мэдээллийг нэг дороос</p>
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Байршил эсвэл зогсоолын нэр хайх...">
+            <button onclick="searchParking()">ЗОГСООЛ ХАЙХ</button>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════ MAIN CONTENT ══════════ -->
+<div class="container">
+    <div class="main-content">
+        <div class="tabs">
+            <div class="tab active" onclick="showTab('map', event)">📍 Газрын зураг</div>
+            <div class="tab" onclick="showTab('list', event)">🚗 Зогсоолууд</div>
+            <div class="tab" onclick="showTab('info', event)">ℹ️ Мэдээлэл</div>
+        </div>
+
+        <div id="mapTab" class="tab-content active">
+            <h2 style="color:#333;margin-bottom:10px;">Зогсоолын газрын зураг</h2>
+            <p style="color:#6c757d;margin-bottom:20px;">Pin дээр дарж дэлгэрэнгүй мэдээлэл үзнэ үү</p>
+            <div id="map"></div>
+        </div>
+
+        <div id="listTab" class="tab-content">
+            <h2 style="color:#333;margin-bottom:20px;">Нийтийн зогсоолууд</h2>
+            <div class="parking-grid" id="parkingGrid"></div>
+        </div>
+
+        <div id="infoTab" class="tab-content">
+            <h2 style="color:#333;margin-bottom:30px;text-align:center;">Бидний давуу тал</h2>
+            <div class="features">
+                <div class="feature">
+                    <div class="feature-icon">🗺️</div>
+                    <h3>Хамгийн ойр зогсоолдоо зогс</h3>
+                    <p>Зогсоол хайх асуудлыг газрын зургаар шийдлээ</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">💳</div>
+                    <h3>Онлайн төлбөр</h3>
+                    <p>Зогсоолын төлбөрийг аюулгүй онлайн төлөх боломжтой</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">📱</div>
+                    <h3>Хялбар хэрэглээ</h3>
+                    <p>Утас болон компьютер дээр аль ч төхөөрөмж дээр ажиллана</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">🔔</div>
+                    <h3>Сануулга</h3>
+                    <p>Зогсоолын хугацаа дуусахад урьдчилан сануулна</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<footer class="footer">
+    <div class="container">
+        <p>© 2024 E-Parking. Бүх эрх хуулиар хамгаалагдсан.</p>
+        <p style="margin-top:10px;">Холбоо барих: info@E-Parking.mn | +976 7000-0000</p>
+    </div>
+</footer>
+
+<script>
+// ══════════ PARKING DATA ══════════
+const parkings = [
+    { name: 'ТАЛБАЙН УРД ЗОГСООЛ', location: ' СБД ', lat: 47.91787, lng: 106.91774, capacity: 50, available: 45, price: '0-30 минут=2,000₮/цаг', type: 'Нийтийн' },
+    { name: 'БӨМБӨГӨР ХУДАЛДААНЫ ТӨВ', location: 'СБД', lat: 47.91967, lng: 106.89942, capacity: 100, available: 78, price: '2,000₮/цаг', type: 'Нийтийн' },
+    { name: 'ТБД АНДУУД BSB LIFESTYLE', location: '', lat: 47.91428, lng: 106.88426, capacity: 35, available: 12, price: '2,000₮/цаг', type: 'Нийтийн' },
+    { name: 'GRAND PLAZA', location: 'БГД', lat: 47.91407, lng: 106.89039, capacity: 56, available: 45, price: '2,000₮/цаг ', type: 'Нийтийн' },
+    { name: 'MAX MALL', location: 'БГД', lat: 47.91967, lng: 106.89942, capacity: 50, available: 28, price: '2,000₮/цаг', type: 'Нийтийн' },
+    { name: 'СПОРТЫН ТӨВ ОРДОН', location: 'СБД', lat: 47.91967, lng: 106.89942, capacity: 80, available: 45, price: '2,000₮/цаг', type: 'Нийтийн' },
+    { name: 'УЛСЫН ИХ ДЭЛГҮҮР ЗОГСООЛ', location: 'СБД', lat: 47.91653,  lng: 106.90644, capacity: 60, available: 12, price: '1,500₮/цаг', type: 'Худалдааны төв' },
+    { name: 'НАРАНТУУЛ ЗАХ ЗОГСООЛ', location: 'БЗД', lat: 47.90913, lng: 106.94828, capacity: 300, available: 246, price: '1,000₮/цаг', type: 'Захын' },    
+    { name: 'Хан-Уул зогсоол', location: 'Хан-Уул дүүрэг', lat: 47.9100, lng: 106.9050, capacity: 120, available: 88, price: '1,200₮/цаг', type: 'Нийтийн' },
+    { name: 'БАРИЛГАЧИДЫН ТАЛБАЙ', location: 'СБД', lat: 47.92011, lng: 106.90856, capacity: 60, available: 43, price: '1,000₮/цаг', type: 'Захын' },    
+    { name: 'ТӨМӨР ЗАМЫН ЗОГСООЛ', location: 'БГД', lat: 47.90895, lng: 106.88391, capacity: 70, available: 35, price: '1,000₮/цаг', type: 'Захын' },    
+    { name: '3-Р ЭМНЭЛЭГИЙН ЗОГСООЛ', location: 'БГД', lat: 47.91347, lng: 106.85724, capacity: 80, available: 74, price: '1,000₮/цаг', type: 'Нийтийн' },
+    { name: '2-Р ЭМНЭЛЭГИЙН ЗОГСООЛ', location: 'БЗД', lat: 47.91924, lng: 106.93729, capacity: 80, available: 12, price: '1,000₮/цаг', type: 'Нийтийн' },
+    { name: '1-Р ЭМНЭЛЭГИЙН ЗОГСООЛ', location: 'БЗД', lat: 47.91540, lng: 106.92474, capacity: 80, available: 23, price: '1,000₮/цаг', type: 'Нийтийн' },
+    
+];
+
+// ══════════ AUTH ══════════
+let users = JSON.parse(localStorage.getItem('ep_users') || '[]');
+let currentUser = JSON.parse(localStorage.getItem('ep_current') || 'null');
+
+function saveUsers() { localStorage.setItem('ep_users', JSON.stringify(users)); }
+
+function updateHeaderUI() {
+    const pill = document.getElementById('userPill');
+    const lBtn = document.getElementById('loginBtn');
+    const rBtn = document.getElementById('registerBtn');
+    if (currentUser) {
+        pill.classList.add('show');
+        lBtn.style.display = 'none';
+        rBtn.style.display = 'none';
+        document.getElementById('userName').textContent = currentUser.name;
+        document.getElementById('userAvatar').textContent = currentUser.name.charAt(0).toUpperCase();
+    } else {
+        pill.classList.remove('show');
+        lBtn.style.display = '';
+        rBtn.style.display = '';
+    }
+}
+
+function showError(id, msg) {
+    const el = document.getElementById(id);
+    el.textContent = msg; el.classList.add('show');
+}
+function hideMessages(prefix) {
+    document.getElementById(prefix + 'Error').classList.remove('show');
+    document.getElementById(prefix + 'Success').classList.remove('show');
+}
+
+function handleLogin() {
+    hideMessages('login');
+    const email = document.getElementById('loginEmail').value.trim();
+    const pass  = document.getElementById('loginPassword').value;
+    if (!email || !pass) { showError('loginError', '⚠️ Бүх талбарыг бөглөнө үү.'); return; }
+    const user = users.find(u => u.email === email && u.password === pass);
+    if (!user) { showError('loginError', '❌ Имэйл эсвэл нууц үг буруу байна.'); return; }
+    currentUser = user;
+    localStorage.setItem('ep_current', JSON.stringify(user));
+    closeModal('login');
+    updateHeaderUI();
+}
+
+function handleRegister() {
+    hideMessages('register');
+    const name  = document.getElementById('regName').value.trim();
+    const phone = document.getElementById('regPhone').value.trim();
+    const email = document.getElementById('regEmail').value.trim();
+    const pass  = document.getElementById('regPassword').value;
+    const pass2 = document.getElementById('regPassword2').value;
+
+    if (!name || !phone || !email || !pass || !pass2) {
+        showError('registerError', '⚠️ Бүх талбарыг бөглөнө үү.'); return;
+    }
+    if (!/^\d{7,8}$/.test(phone.replace(/\D/g,''))) {
+        showError('registerError', '⚠️ Утасны дугаар буруу байна.'); return;
+    }
+    if (pass.length < 6) {
+        showError('registerError', '⚠️ Нууц үг хамгийн багадаа 6 тэмдэгт байх ёстой.'); return;
+    }
+    if (pass !== pass2) {
+        showError('registerError', '❌ Нууц үг таарахгүй байна.'); return;
+    }
+    if (users.find(u => u.email === email)) {
+        showError('registerError', '❌ Энэ имэйл хаяг аль хэдийн бүртгэлтэй байна.'); return;
+    }
+    const newUser = { name, phone, email, password: pass };
+    users.push(newUser); saveUsers();
+    currentUser = newUser;
+    localStorage.setItem('ep_current', JSON.stringify(newUser));
+    closeModal('register');
+    updateHeaderUI();
+}
+
+function handleLogout() {
+    currentUser = null;
+    localStorage.removeItem('ep_current');
+    updateHeaderUI();
+}
+
+// ══════════ MODAL CONTROL ══════════
+function openModal(type) {
+    hideMessages(type);
+    document.getElementById(type + 'Overlay').classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+function closeModal(type) {
+    document.getElementById(type + 'Overlay').classList.remove('show');
+    document.body.style.overflow = '';
+}
+function switchModal(from, to) { closeModal(from); openModal(to); }
+
+// Close on backdrop click
+document.querySelectorAll('.overlay').forEach(o => {
+    o.addEventListener('click', e => {
+        if (e.target === o) {
+            o.classList.remove('show');
+            document.body.style.overflow = '';
+        }
+    });
+});
+
+// Enter key support
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.overlay.show').forEach(o => {
+            o.classList.remove('show');
+            document.body.style.overflow = '';
+        });
+    }
+});
+
+// ══════════ MAP ══════════
+let map;
+function initMap() {
+    map = L.map('map').setView([47.9184, 106.9177], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    parkings.forEach(parking => {
+        const status = getStatus(parking.available, parking.capacity);
+let color;
+
+if (status === 'high') {
+    color = '#16a34a';   // Ногоон (маш элбэг)
+} else if (status === 'medium') {
+    color = '#999f00';   // Цэнхэр (дунд)
+} else if (status === 'low') {
+    color = '#ff0000';   // Улбар шар (цөөн)
+} else {
+    color = '#670000';   // Улаан (дүүрсэн)
+}        const marker = L.marker([parking.lat, parking.lng], {
+            icon: L.divIcon({
+                html: `<div style="background:${color};width:30px;height:30px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;font-size:16px;">P</div>`,
+                className: '', iconSize: [30, 30], iconAnchor: [15, 15]
+            })
+        }).addTo(map);
+        marker.bindPopup(`
+            <div style="font-family:Arial,sans-serif;min-width:200px;">
+                <h3 style="margin:0 0 10px;color:#667eea;">${parking.name}</h3>
+                <p style="margin:5px 0;color:#666;"><strong>📍</strong> ${parking.location}</p>
+                <p style="margin:5px 0;color:#666;"><strong>🚗</strong> ${parking.available}/${parking.capacity} суудал</p>
+                <p style="margin:5px 0;color:#666;"><strong>💵</strong> ${parking.price}</p>
+                <p style="margin:10px 0 0;"><span style="background:${color};color:white;padding:5px 10px;border-radius:15px;font-size:12px;">${getStatusText(status)}</span></p>
+            </div>
+        `);
+    });
+}
+
+function renderParkingList() {
+    document.getElementById('parkingGrid').innerHTML = parkings.map(p => {
+        const status = getStatus(p.available, p.capacity);
+        return `
+        <div class="parking-card">
+            <h3>${p.name}</h3>
+            <div class="parking-info">
+                <div>📍 ${p.location}</div>
+                <div>🏢 ${p.type}</div>
+                <div>🚗 ${p.available}/${p.capacity} суудал</div>
+                <div><span class="price-tag">${p.price}</span></div>
+                <div><span class="status ${status}">${getStatusText(status)}</span></div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function getStatus(a, c) {
+    const p = (a / c) * 100;
+    if (p > 100) return 'high';      // Маш элбэг
+    if (p > 40) return 'medium';    // Дунд
+    if (p > 10)  return 'low';       // Цөөн
+    return 'full';                  // Дүүрсэн
+}
+function getStatusText(s) {
+    if (s === 'high') return ' Маш элбэг';
+    if (s === 'medium') return ' Дунд зэргийн';
+    if (s === 'low') return ' Цөөн үлдсэн';
+    return ' Зогсоол дүүрсэн';
+}
+
+// ══════════ TABS ══════════
+function showTab(tabName, event) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    if (event) event.target.classList.add('active');
+    document.getElementById(tabName + 'Tab').classList.add('active');
+    if (tabName === 'map' && map) setTimeout(() => map.invalidateSize(), 100);
+}
+
+function showTab2(tabName) {
+    document.querySelectorAll('.tab').forEach((t, i) => {
+        const names = ['map','list','info'];
+        t.classList.toggle('active', names[i] === tabName);
+    });
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById(tabName + 'Tab').classList.add('active');
+    if (tabName === 'map' && map) setTimeout(() => map.invalidateSize(), 100);
+    document.querySelector('.main-content').scrollIntoView({ behavior: 'smooth' });
+}
+
+function searchParking() {
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    const found = parkings.find(p => p.name.toLowerCase().includes(q) || p.location.toLowerCase().includes(q));
+    if (found) {
+        showTab2('map');
+        setTimeout(() => map.setView([found.lat, found.lng], 15), 200);
+    } else {
+        alert('Зогсоол олдсонгүй');
+    }
+}
+
+document.getElementById('searchInput').addEventListener('keypress', e => {
+    if (e.key === 'Enter') searchParking();
+});
+
+window.onload = function() {
+    initMap();
+    renderParkingList();
+    updateHeaderUI();
+};
+</script>
+</body>
+</html>
